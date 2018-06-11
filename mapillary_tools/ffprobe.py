@@ -44,6 +44,7 @@ class FFProbe:
             self.streams=[]
             self.video=[]
             self.audio=[]
+            self.meta=[]
             datalines=[]
 
             for a in iter(p.stdout.readline, b''):
@@ -70,6 +71,8 @@ class FFProbe:
                     self.audio.append(a)
                 if a.isVideo():
                     self.video.append(a)
+                if a.isGPMD():
+                    self.meta.append(a)
         else:
             raise IOError('No such media file ' + video_file)
 
@@ -104,6 +107,16 @@ class FFStream:
         val=False
         if self.__dict__['codec_type']:
             if self.codec_type == 'video':
+                val=True
+        return val
+
+    def isGPMD(self):
+        """
+        Is the stream labelled as a GPMD (GoPro Metadata) stream.
+        """
+        val=False
+        if self.__dict__['codec_type']:
+            if self.codec_tag_string == 'gpmd':
                 val=True
         return val
 
@@ -156,10 +169,34 @@ class FFStream:
                     print "None integer frame count"
         return f
 
+    def framesPerSecond(self):
+        """
+        Returns the frames per second as floating point. Returns 0.0 if not a video stream.
+        """
+
+        fps = 0.0
+        rate = self.__dict__['r_frame_rate']
+        if self.isVideo() and rate:
+            if "/" in rate:
+                try:
+                    num, denom = rate.split("/")
+                    fps=float(num)/float(denom)
+                except Exception as e:
+                    print "None fraction r_frame_rate"
+            elif "." in rate:
+                try:
+                    fps=float(rate)
+                except Exception as e:
+                    print "None numeric r_frame_rate"
+            else:
+                print "Unknown r_frame_rate format"
+
+        return fps
+
     def durationSeconds(self):
         """
-        Returns the runtime duration of the video stream as a floating point number of seconds.
-        Returns 0.0 if not a video stream.
+        Returns the runtime duration of the stream as a floating point number of seconds.
+        Returns 0.0 if not a video, audio or known metadata stream.
         """
         f=0.0
         if self.isVideo() or self.isAudio():
@@ -168,6 +205,12 @@ class FFStream:
                     f=float(self.__dict__['duration'])
                 except Exception as e:
                     print "None numeric duration"
+        if self.isGPMD():
+            if self.__dict__['duration_ts']:
+                try:
+                    f=int(self.__dict__['duration_ts'])/1000.0
+                except Exception as e:
+                    print "None integer duration_ts"
         return f
 
     def language(self):
